@@ -1,992 +1,1173 @@
 import streamlit as st
 import os
+import re
 from datetime import datetime
-import time
-import random
 
 st.set_page_config(
-    page_title="Cortex | Multi-Agent AI",
+    page_title="Cortex Research",
     page_icon="◈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ── Theme Configuration ───────────────────────────────────────────────────
-if "theme" not in st.session_state:
-    st.session_state.theme = "dark"
-    
-if "research_history" not in st.session_state:
-    st.session_state.research_history = []
+# ── Session state ─────────────────────────────────────────────────────────────
+for k, v in {
+    "selected_report": None,
+    "tone":            "Academic",
+    "style":           "Balanced",
+}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-THEMES = {
-    "dark": {
-        "bg": "#0a0a0a",
-        "surface": "#141414",
-        "surface2": "#1e1e1e",
-        "surface3": "#2a2a2a",
-        "border": "#2c2c2c",
-        "border2": "#3d3d3d",
-        "text": "#ffffff",
-        "text2": "#a0a0a0",
-        "text3": "#707070",
-        "accent": "#7c4dff",
-        "accent2": "#b47cff",
-        "accent_bg": "rgba(124, 77, 255, 0.1)",
-        "accent_bd": "#7c4dff",
-        "success": "#10b981",
-        "success_bg": "rgba(16, 185, 129, 0.1)",
-        "warning": "#f59e0b",
-        "warning_bg": "rgba(245, 158, 11, 0.1)",
-        "error": "#ef4444",
-        "error_bg": "rgba(239, 68, 68, 0.1)",
-        "gradient": "linear-gradient(135deg, #7c4dff 0%, #b47cff 100%)",
-    },
-    "light": {
-        "bg": "#f8f9fa",
-        "surface": "#ffffff",
-        "surface2": "#f1f3f5",
-        "surface3": "#e9ecef",
-        "border": "#dee2e6",
-        "border2": "#ced4da",
-        "text": "#212529",
-        "text2": "#495057",
-        "text3": "#868e96",
-        "accent": "#7c4dff",
-        "accent2": "#9d6eff",
-        "accent_bg": "rgba(124, 77, 255, 0.1)",
-        "accent_bd": "#7c4dff",
-        "success": "#10b981",
-        "success_bg": "rgba(16, 185, 129, 0.1)",
-        "warning": "#f59e0b",
-        "warning_bg": "rgba(245, 158, 11, 0.1)",
-        "error": "#ef4444",
-        "error_bg": "rgba(239, 68, 68, 0.1)",
-        "gradient": "linear-gradient(135deg, #7c4dff 0%, #b47cff 100%)",
-    }
+# ── Single dark theme ─────────────────────────────────────────────────────────
+T = {
+    "bg":         "#0c0b09",
+    "surface":    "#151412",
+    "surface2":   "#1c1a17",
+    "surface3":   "#242119",
+    "border":     "#2a2720",
+    "border2":    "#38342b",
+    "text":       "#f2ede6",
+    "text2":      "#9c9485",
+    "text3":      "#5c5649",
+    "accent":     "#c8a96e",
+    "accent2":    "#e8c98e",
+    "accent_bg":  "#1e1a10",
+    "accent_bd":  "#3d3420",
+    "success":    "#6aaa82",
+    "success_bg": "#101a13",
+    "success_bd": "#1e3d28",
+    "warn_bg":    "#1e1a10",
+    "running_bd": "#3d3420",
+    "error":      "#c87070",
+    "error_bg":   "#1a1010",
 }
 
-T = THEMES[st.session_state.theme]
-
-# ── CSS Styling ───────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap');
 
-* {{
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+/* ── Reset ── */
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+/* ── Hide Streamlit chrome ── */
+#MainMenu, footer, header,
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"] {{
+    display: none !important;
+    visibility: hidden !important;
+}}
+/* Hide sidebar collapse button text */
+[data-testid="collapsedControl"] {{
+    display: none !important;
+}}
+button[data-testid="baseButton-headerNoPadding"] {{
+    display: none !important;
+}}
+[data-testid="stSidebarCollapsedControl"] {{
+    display: none !important;
+}}
+/* ── Base ── */
+html, body, [data-testid="stAppViewContainer"],
+[data-testid="stMain"], .main, .stApp {{
+    background: {T['bg']} !important;
+    color: {T['text']} !important;
+    font-family: 'Inter', sans-serif !important;
 }}
 
-body {{
-    font-family: 'Inter', sans-serif;
-    background: {T['bg']};
-    color: {T['text']};
+/* ── Main content area ── */
+.block-container {{
+    max-width: 820px !important;
+    padding: 0 1.5rem 5rem !important;
+    margin: 0 auto !important;
 }}
 
-.stApp {{
-    background: {T['bg']};
-}}
-
-[data-testid="stAppViewContainer"] {{
-    background: {T['bg']};
-}}
-
-[data-testid="stHeader"] {{
-    background: transparent;
-    border-bottom: 1px solid {T['border']};
-}}
-
+/* ── Sidebar ── */
 [data-testid="stSidebar"] {{
-    background: {T['surface']};
-    border-right: 1px solid {T['border']};
+    background: {T['surface']} !important;
+    border-right: 1px solid {T['border']} !important;
+    min-width: 240px !important;
+    max-width: 280px !important;
+}}
+[data-testid="stSidebar"] > div:first-child {{
+    padding: 1.8rem 1.2rem !important;
+}}
+[data-testid="stSidebar"] * {{
+    color: {T['text']} !important;
+    font-family: 'Inter', sans-serif !important;
+}}
+[data-testid="collapsedControl"] {{
+    background: {T['surface']} !important;
+    border-right: 1px solid {T['border']} !important;
+    color: {T['accent']} !important;
 }}
 
-[data-testid="stSidebar"] .block-container {{
-    padding: 2rem 1.5rem;
+/* ── Typography ── */
+h1, h2, h3, h4 {{
+    font-family: 'Playfair Display', serif !important;
+    font-weight: 400 !important;
+    color: {T['text']} !important;
+}}
+p, span, div, label, li {{
+    font-family: 'Inter', sans-serif !important;
+    color: {T['text']} !important;
 }}
 
-.main .block-container {{
-    max-width: 1200px !important;
-    padding: 2rem 2rem !important;
+/* ── Text input ── */
+[data-testid="stTextInput"] label {{ display: none !important; }}
+[data-testid="stTextInput"] input {{
+    background: {T['surface2']} !important;
+    border: 1px solid {T['border2']} !important;
+    border-radius: 10px !important;
+    color: {T['text']} !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 15px !important;
+    padding: 14px 18px !important;
+    width: 100% !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+    caret-color: {T['accent']} !important;
+}}
+[data-testid="stTextInput"] input:focus {{
+    border-color: {T['accent']} !important;
+    box-shadow: 0 0 0 3px {T['accent_bg']} !important;
+    outline: none !important;
+    background: {T['surface']} !important;
+}}
+[data-testid="stTextInput"] input::placeholder {{
+    color: {T['text3']} !important;
+    font-style: italic !important;
 }}
 
-h1, h2, h3, h4, h5, h6 {{
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 500;
-    letter-spacing: -0.02em;
-    color: {T['text']};
+/* ── Buttons ── */
+[data-testid="stButton"] button {{
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 500 !important;
+    border-radius: 8px !important;
+    transition: all 0.2s !important;
+    cursor: pointer !important;
+}}
+[data-testid="stButton"] button[kind="primary"] {{
+    background: {T['accent']} !important;
+    border: none !important;
+    color: {T['bg']} !important;
+    font-size: 14px !important;
+    padding: 12px 28px !important;
+    width: 100% !important;
+    letter-spacing: 0.3px !important;
+}}
+[data-testid="stButton"] button[kind="primary"]:hover {{
+    opacity: 0.88 !important;
+    transform: translateY(-1px) !important;
+}}
+[data-testid="stButton"] button[kind="secondary"] {{
+    background: {T['surface2']} !important;
+    border: 1px solid {T['border2']} !important;
+    color: {T['text2']} !important;
+    font-size: 13px !important;
+    padding: 8px 16px !important;
+}}
+[data-testid="stButton"] button[kind="secondary"]:hover {{
+    border-color: {T['accent']} !important;
+    color: {T['accent']} !important;
 }}
 
-h1 {{
-    font-size: 3.5rem;
-    line-height: 1.2;
-    background: {T['gradient']};
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 1rem;
+/* ── Download button ── */
+[data-testid="stDownloadButton"] button {{
+    background: {T['surface2']} !important;
+    border: 1px solid {T['border2']} !important;
+    border-radius: 8px !important;
+    color: {T['text']} !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 13px !important;
+    padding: 10px 16px !important;
+    width: 100% !important;
+    transition: all 0.2s !important;
+}}
+[data-testid="stDownloadButton"] button:hover {{
+    border-color: {T['accent']} !important;
+    color: {T['accent']} !important;
 }}
 
-.stTextInput > div > div > input {{
-    background: {T['surface2']};
-    border: 2px solid {T['border']};
-    border-radius: 16px;
-    padding: 1rem 1.5rem;
-    font-size: 1rem;
-    color: {T['text']};
-    transition: all 0.3s ease;
+/* ── Selectbox ── */
+[data-testid="stSelectbox"] label {{ display: none !important; }}
+[data-testid="stSelectbox"] > div > div {{
+    background: {T['surface2']} !important;
+    border: 1px solid {T['border2']} !important;
+    border-radius: 8px !important;
+    color: {T['text']} !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 13px !important;
+}}
+[data-testid="stSelectbox"] svg {{ fill: {T['text2']} !important; }}
+[data-testid="stSelectbox"] option {{
+    background: {T['surface2']} !important;
+    color: {T['text']} !important;
 }}
 
-.stTextInput > div > div > input:focus {{
-    border-color: {T['accent']};
-    box-shadow: 0 0 0 4px {T['accent_bg']};
-    outline: none;
+/* ── Tabs ── */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {{
+    background: transparent !important;
+    border-bottom: 1px solid {T['border']} !important;
+    gap: 0 !important;
+    padding: 0 !important;
+}}
+[data-testid="stTabs"] [data-baseweb="tab"] {{
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    color: {T['text3']} !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 11px 18px !important;
+    margin-bottom: -1px !important;
+    transition: color 0.2s !important;
+}}
+[data-testid="stTabs"] [aria-selected="true"] {{
+    color: {T['accent']} !important;
+    border-bottom-color: {T['accent']} !important;
+}}
+[data-testid="stTabs"] [data-baseweb="tab-panel"] {{
+    background: transparent !important;
+    padding: 1.8rem 0 0 !important;
 }}
 
-.stTextInput > div > div > input::placeholder {{
-    color: {T['text3']};
+/* ── Progress ── */
+[data-testid="stProgress"] > div > div > div > div {{
+    background: {T['accent']} !important;
+    border-radius: 4px !important;
+    transition: width 0.4s ease !important;
+}}
+[data-testid="stProgress"] > div > div > div {{
+    background: {T['border']} !important;
+    border-radius: 4px !important;
+    height: 3px !important;
 }}
 
-.stButton > button {{
-    border-radius: 40px;
-    padding: 0.75rem 2rem;
-    font-weight: 500;
-    font-size: 0.95rem;
-    transition: all 0.3s ease;
-    border: none;
-    cursor: pointer;
-}}
-
-.stButton > button[kind="primary"] {{
-    background: {T['gradient']};
-    color: white;
-    box-shadow: 0 8px 20px -8px {T['accent']};
-}}
-
-.stButton > button[kind="primary"]:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 12px 28px -8px {T['accent']};
-}}
-
-.stButton > button[kind="secondary"] {{
-    background: transparent;
-    border: 2px solid {T['border']};
-    color: {T['text2']};
-}}
-
-.stButton > button[kind="secondary"]:hover {{
-    border-color: {T['accent']};
-    color: {T['accent']};
-}}
-
-.stProgress > div > div > div > div {{
-    background: {T['gradient']};
-}}
-
-.stProgress > div > div > div {{
-    background: {T['surface3']};
-    border-radius: 100px;
-    height: 8px;
-}}
-
+/* ── Metrics ── */
 [data-testid="stMetric"] {{
-    background: {T['surface2']};
-    border: 1px solid {T['border']};
-    border-radius: 20px;
-    padding: 1.5rem;
-    transition: all 0.3s ease;
+    background: {T['surface']} !important;
+    border: 1px solid {T['border']} !important;
+    border-radius: 12px !important;
+    padding: 1rem 1.2rem !important;
 }}
-
-[data-testid="stMetric"]:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 10px 30px -15px {T['accent']};
-    border-color: {T['accent']};
+[data-testid="stMetricLabel"] p {{
+    font-size: 9px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    color: {T['text3']} !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 500 !important;
 }}
-
-[data-testid="stMetricLabel"] {{
-    color: {T['text2']};
-    font-size: 0.85rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}}
-
 [data-testid="stMetricValue"] {{
-    color: {T['text']};
-    font-size: 2rem;
-    font-weight: 600;
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Playfair Display', serif !important;
+    font-size: 24px !important;
+    color: {T['text']} !important;
+    font-weight: 400 !important;
+    line-height: 1.2 !important;
 }}
 
-.stTabs [data-baseweb="tab-list"] {{
-    gap: 2rem;
-    background: transparent;
-    border-bottom: 2px solid {T['border']};
+/* ── Alerts ── */
+[data-testid="stAlert"] {{
+    border-radius: 8px !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 13px !important;
+    border: none !important;
+    padding: 10px 14px !important;
 }}
 
-.stTabs [data-baseweb="tab"] {{
-    background: transparent;
+/* ── Divider ── */
+hr {{
+    border: none !important;
+    border-top: 1px solid {T['border']} !important;
+    margin: 1.8rem 0 !important;
+}}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {{ width: 4px; height: 4px; }}
+::-webkit-scrollbar-track {{ background: {T['bg']}; }}
+::-webkit-scrollbar-thumb {{ background: {T['border2']}; border-radius: 4px; }}
+::-webkit-scrollbar-thumb:hover {{ background: {T['accent']}; }}
+
+/* ════════════════════════════════════════════
+   CUSTOM COMPONENT CLASSES
+   ════════════════════════════════════════════ */
+
+/* ── Sidebar wordmark ── */
+.wordmark {{
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+    color: {T['text']} !important;
+    margin-bottom: 0;
+}}
+.wordmark-dot {{ color: {T['accent']} !important; }}
+
+/* ── Sidebar labels ── */
+.sb-label {{
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.3px;
+    color: {T['text3']} !important;
+    font-family: 'Inter', sans-serif;
+    display: block;
+    margin-bottom: 8px;
+}}
+
+/* ── Sidebar divider ── */
+.sb-div {{
     border: none;
-    color: {T['text2']};
-    font-size: 1rem;
+    border-top: 1px solid {T['border']};
+    margin: 1.2rem 0;
+}}
+
+/* ── Config description ── */
+.cfg-desc {{
+    font-size: 11px;
+    color: {T['text3']} !important;
+    font-family: 'Inter', sans-serif;
+    line-height: 1.5;
+    margin-top: 5px;
+    display: block;
+}}
+
+/* ── Pipeline steps ── */
+.pipe-step {{
+    display: flex;
+    gap: 10px;
+    padding: 5px 0;
+    align-items: flex-start;
+}}
+.pipe-num {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: {T['accent']} !important;
+    min-width: 18px;
+    margin-top: 2px;
+    flex-shrink: 0;
+}}
+.pipe-name {{
+    font-size: 12px;
     font-weight: 500;
-    padding: 0.75rem 0;
-    margin-bottom: -2px;
+    color: {T['text']} !important;
+    font-family: 'Inter', sans-serif;
+    line-height: 1.3;
+}}
+.pipe-desc {{
+    font-size: 10px;
+    color: {T['text3']} !important;
+    font-family: 'Inter', sans-serif;
+    margin-top: 1px;
 }}
 
-.stTabs [aria-selected="true"] {{
-    color: {T['accent']};
-    border-bottom: 2px solid {T['accent']};
+/* ── Recent report buttons ── */
+[data-testid="stSidebar"] [data-testid="stButton"] button[kind="secondary"] {{
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: {T['text2']} !important;
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+    text-align: left !important;
+    width: 100% !important;
+    justify-content: flex-start !important;
+}}
+[data-testid="stSidebar"] [data-testid="stButton"] button[kind="secondary"]:hover {{
+    background: {T['surface2']} !important;
+    border-color: {T['border']} !important;
+    color: {T['text']} !important;
 }}
 
-.streamlit-expanderHeader {{
-    background: {T['surface2']};
-    border: 1px solid {T['border']};
-    border-radius: 12px;
-    font-weight: 500;
-    color: {T['text']};
+/* ── Hero section ── */
+.hero-wrap {{
+    text-align: center;
+    padding: 3.5rem 1rem 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
 }}
-
-.streamlit-expanderContent {{
-    background: {T['surface']};
-    border: 1px solid {T['border']};
-    border-top: none;
-    border-radius: 0 0 12px 12px;
-    padding: 1.5rem;
-}}
-
-.glass-card {{
-    background: {T['surface2']};
-    backdrop-filter: blur(10px);
-    border: 1px solid {T['border']};
-    border-radius: 24px;
-    padding: 1.5rem;
-    transition: all 0.3s ease;
-}}
-
-.glass-card:hover {{
-    border-color: {T['accent']};
-    box-shadow: 0 20px 40px -20px {T['accent']};
-}}
-
-.badge {{
+.hero-tag {{
     display: inline-flex;
     align-items: center;
-    padding: 0.25rem 0.75rem;
-    background: {T['surface3']};
-    border: 1px solid {T['border2']};
-    border-radius: 40px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: {T['text2']};
-}}
-
-.badge-accent {{
+    gap: 6px;
     background: {T['accent_bg']};
-    border-color: {T['accent']};
-    color: {T['accent']};
+    border: 1px solid {T['accent_bd']};
+    border-radius: 30px;
+    padding: 4px 14px;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+    color: {T['accent']} !important;
+    letter-spacing: 0.5px;
+    margin-bottom: 1.4rem;
+}}
+.hero-title {{
+    font-family: 'Playfair Display', serif !important;
+    font-size: 2.8rem;
+    line-height: 1.18;
+    letter-spacing: -0.4px;
+    color: {T['text']} !important;
+    margin-bottom: 0.9rem;
+}}
+.hero-title em {{
+    font-style: italic;
+    color: {T['accent']} !important;
+}}
+.hero-sub {{
+    font-size: 14px;
+    color: {T['text2']} !important;
+    line-height: 1.75;
+    font-family: 'Inter', sans-serif;
+    font-weight: 300;
+    max-width: 440px;
+    margin: 0 auto 1.4rem;
+    margin: 0 auto 1.4rem;
+    text-align: center;
+}}
+.pill-row {{
+    display: flex;
+    gap: 7px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 2.5rem;
+}}
+.pill {{
+    background: {T['surface']};
+    border: 1px solid {T['border']};
+    border-radius: 30px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: {T['text2']} !important;
+    font-family: 'Inter', sans-serif;
 }}
 
+/* ── Config tags below input ── */
+.cfg-row {{
+    display: flex;
+    gap: 7px;
+    margin: 8px 0 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}}
+.cfg-tag {{
+    background: {T['accent_bg']};
+    border: 1px solid {T['accent_bd']};
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+    color: {T['accent']} !important;
+}}
+.cfg-tag-muted {{
+    background: {T['surface']};
+    border: 1px solid {T['border']};
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+    color: {T['text3']} !important;
+}}
+
+/* ── Agent grid ── */
 .agent-grid {{
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
-    margin: 1.5rem 0;
+    gap: 10px;
+    margin: 1.4rem 0 1.8rem;
+}}
+.agent-card {{
+    background: {T['surface']};
+    border: 1px solid {T['border']};
+    border-radius: 12px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.25s, background 0.25s;
+}}
+.agent-card::before {{
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: {T['border']};
+    transition: background 0.25s;
+}}
+.agent-card.running {{
+    border-color: {T['running_bd']};
+    background: {T['warn_bg']};
+}}
+.agent-card.running::before {{ background: {T['accent']}; }}
+.agent-card.done {{
+    border-color: {T['success_bd']};
+    background: {T['success_bg']};
+}}
+.agent-card.done::before {{ background: {T['success']}; }}
+.a-num {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: {T['text3']} !important;
+    margin-bottom: 9px;
+    display: block;
+    letter-spacing: 0.5px;
+}}
+.agent-card.running .a-num {{ color: {T['accent']} !important; }}
+.agent-card.done .a-num {{ color: {T['success']} !important; }}
+.a-name {{
+    font-size: 13px;
+    font-weight: 500;
+    color: {T['text']} !important;
+    font-family: 'Inter', sans-serif;
+    margin-bottom: 3px;
+    display: block;
+}}
+.a-desc {{
+    font-size: 10px;
+    color: {T['text3']} !important;
+    font-family: 'Inter', sans-serif;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    display: block;
+}}
+.a-badge {{
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-family: 'Inter', sans-serif;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+}}
+.b-wait {{
+    color: {T['text3']} !important;
+    background: {T['surface2']};
+    border: 1px solid {T['border']};
+}}
+.b-run {{
+    color: {T['accent']} !important;
+    background: {T['accent_bg']};
+    border: 1px solid {T['accent_bd']};
+}}
+.b-done {{
+    color: {T['success']} !important;
+    background: {T['success_bg']};
+    border: 1px solid {T['success_bd']};
 }}
 
-.agent-card {{
+/* ── Pulse animation ── */
+.pulse {{
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: {T['accent']};
+    display: inline-block;
+    animation: pulse-anim 1.4s ease-in-out infinite;
+    flex-shrink: 0;
+}}
+@keyframes pulse-anim {{
+    0%,100% {{ opacity:1; transform:scale(1); }}
+    50%      {{ opacity:0.35; transform:scale(0.65); }}
+}}
+
+/* ── Status bar ── */
+.status-bar {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    background: {T['surface']};
+    border: 1px solid {T['border']};
+    border-radius: 8px;
+    margin: 0.8rem 0;
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    color: {T['text2']} !important;
+}}
+
+/* ── Search query chip ── */
+.sq {{
+    display: inline-flex;
+    background: {T['surface2']};
+    border: 1px solid {T['border']};
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: {T['text2']} !important;
+    margin: 2px;
+    white-space: nowrap;
+}}
+
+/* ── Collapsible panel ── */
+.panel-wrap {{
+    background: {T['surface2']};
+    border: 1px solid {T['border']};
+    border-radius: 10px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}}
+.panel-hdr {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 14px;
+}}
+.panel-hdr-title {{
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    color: {T['text2']} !important;
+}}
+.panel-body {{
+    padding: 4px 14px 14px;
+    border-top: 1px solid {T['border']};
+}}
+
+/* ── Report wrapper ── */
+.report-wrap {{
+    background: {T['surface']};
+    border: 1px solid {T['border']};
+    border-radius: 14px;
+    padding: 2.2rem 2.5rem;
+}}
+.report-meta {{
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-bottom: 1.6rem;
+    padding-bottom: 1.2rem;
+    border-bottom: 1px solid {T['border']};
+}}
+.rmeta-hi {{
+    background: {T['accent_bg']};
+    border: 1px solid {T['accent_bd']};
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 10px;
+    font-family: 'Inter', sans-serif;
+    color: {T['accent']} !important;
+}}
+.rmeta-plain {{
     background: {T['surface2']};
     border: 1px solid {T['border']};
     border-radius: 20px;
-    padding: 1.25rem;
-    transition: all 0.3s ease;
+    padding: 3px 10px;
+    font-size: 10px;
+    font-family: 'Inter', sans-serif;
+    color: {T['text3']} !important;
 }}
-
-.agent-card.running {{
-    border-color: {T['accent']};
-    background: {T['accent_bg']};
-    box-shadow: 0 0 30px -10px {T['accent']};
+.report-wrap h1 {{
+    font-family: 'Playfair Display', serif !important;
+    font-size: 1.8rem !important;
+    line-height: 1.25 !important;
+    margin-bottom: 0.8rem !important;
+    font-weight: 400 !important;
+    color: {T['text']} !important;
 }}
-
-.agent-card.done {{
-    border-color: {T['success']};
-    background: {T['success_bg']};
+.report-wrap h2 {{
+    font-family: 'Playfair Display', serif !important;
+    font-size: 1.2rem !important;
+    font-weight: 400 !important;
+    margin: 1.8rem 0 0.6rem !important;
+    padding-top: 1.2rem !important;
+    border-top: 1px solid {T['border']} !important;
+    color: {T['text']} !important;
 }}
-
-.agent-number {{
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: {T['text3']};
-    margin-bottom: 0.5rem;
-    letter-spacing: 0.05em;
+.report-wrap h3 {{
+    font-family: 'Playfair Display', serif !important;
+    font-size: 1rem !important;
+    font-weight: 400 !important;
+    margin: 1.2rem 0 0.4rem !important;
+    color: {T['text']} !important;
 }}
-
-.agent-name {{
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: {T['text']};
-    margin-bottom: 0.25rem;
+.report-wrap p {{
+    font-size: 14px !important;
+    line-height: 1.85 !important;
+    color: {T['text2']} !important;
+    margin-bottom: 0.9rem !important;
+    font-weight: 300 !important;
+    font-family: 'Inter', sans-serif !important;
 }}
-
-.agent-role {{
-    font-size: 0.85rem;
-    color: {T['text2']};
-    margin-bottom: 1rem;
+.report-wrap li {{
+    font-size: 14px !important;
+    line-height: 1.85 !important;
+    color: {T['text2']} !important;
+    font-weight: 300 !important;
+    margin-bottom: 4px !important;
+    font-family: 'Inter', sans-serif !important;
 }}
-
-.agent-status {{
-    font-size: 0.8rem;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+.report-wrap strong {{
+    color: {T['text']} !important;
+    font-weight: 500 !important;
 }}
-
-.status-dot {{
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
+.report-wrap a {{
+    color: {T['accent']} !important;
+    text-decoration: none !important;
+    border-bottom: 1px solid {T['accent_bd']} !important;
 }}
-
-.status-dot.running {{
-    background: {T['accent']};
-    animation: pulse 1.5s infinite;
+.report-wrap code {{
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important;
+    background: {T['surface2']} !important;
+    padding: 2px 5px !important;
+    border-radius: 3px !important;
+    color: {T['accent2']} !important;
 }}
-
-.status-dot.done {{
-    background: {T['success']};
-}}
-
-@keyframes pulse {{
-    0% {{ opacity: 1; transform: scale(1); }}
-    50% {{ opacity: 0.5; transform: scale(1.2); }}
-    100% {{ opacity: 1; transform: scale(1); }}
-}}
-
-.report-container {{
-    background: {T['surface2']};
-    border: 1px solid {T['border']};
-    border-radius: 24px;
-    padding: 2.5rem;
-    margin: 1.5rem 0;
-}}
-
-.report-container h1 {{
-    font-size: 2.5rem;
-    margin-bottom: 1.5rem;
-}}
-
-.report-container h2 {{
-    font-size: 1.8rem;
-    margin: 2rem 0 1rem;
-    padding-top: 1rem;
-    border-top: 2px solid {T['border']};
-}}
-
-.report-container h3 {{
-    font-size: 1.4rem;
-    margin: 1.5rem 0 1rem;
-}}
-
-.report-container p {{
-    color: {T['text2']};
-    line-height: 1.8;
-    margin-bottom: 1rem;
-}}
-
-.report-container blockquote {{
-    border-left: 3px solid {T['accent']};
-    padding-left: 1.5rem;
-    margin: 1.5rem 0;
-    color: {T['text2']};
+.report-wrap blockquote {{
+    border-left: 2px solid {T['accent_bd']};
+    padding-left: 1rem;
+    margin: 1rem 0;
+    color: {T['text2']} !important;
     font-style: italic;
 }}
 
-hr {{
-    border: none;
-    border-top: 2px solid {T['border']};
-    margin: 2rem 0;
-}}
-
-::-webkit-scrollbar {{
-    width: 8px;
-    height: 8px;
-}}
-
-::-webkit-scrollbar-track {{
-    background: {T['surface']};
-}}
-
-::-webkit-scrollbar-thumb {{
-    background: {T['surface3']};
-    border-radius: 4px;
-}}
-
-::-webkit-scrollbar-thumb:hover {{
-    background: {T['accent']};
-}}
-
-.gradient-text {{
-    background: {T['gradient']};
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}}
-
-.hero-section {{
-    text-align: center;
-    padding: 2rem 0 3rem;
-}}
-
-.feature-pill {{
-    display: inline-flex;
-    align-items: center;
-    padding: 0.5rem 1rem;
-    background: {T['surface2']};
-    border: 1px solid {T['border']};
-    border-radius: 40px;
-    margin: 0.25rem;
-    font-size: 0.9rem;
-    color: {T['text2']};
-    transition: all 0.3s ease;
-}}
-
-.feature-pill:hover {{
-    border-color: {T['accent']};
-    color: {T['accent']};
-    transform: translateY(-2px);
-}}
-
-.typing-indicator {{
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 1rem;
-    background: {T['surface2']};
-    border-radius: 40px;
-    width: fit-content;
-}}
-
-.typing-indicator span {{
-    width: 8px;
-    height: 8px;
-    background: {T['accent']};
-    border-radius: 50%;
-    animation: typing 1.4s infinite;
-}}
-
-.typing-indicator span:nth-child(2) {{ animation-delay: 0.2s; }}
-.typing-indicator span:nth-child(3) {{ animation-delay: 0.4s; }}
-
-@keyframes typing {{
-    0%, 60%, 100% {{ transform: translateY(0); opacity: 0.6; }}
-    30% {{ transform: translateY(-10px); opacity: 1; }}
-}}
-
-.sidebar-section {{
-    margin-bottom: 2rem;
-}}
-
-.sidebar-title {{
-    font-size: 0.75rem;
+/* ── Section eyebrow ── */
+.eyebrow {{
+    font-size: 9px;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: {T['text3']};
+    letter-spacing: 1.3px;
+    color: {T['text3']} !important;
+    font-family: 'Inter', sans-serif;
+    display: block;
     margin-bottom: 1rem;
 }}
 
-.stats-item {{
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid {T['border']};
+/* ── Footer ── */
+.footer {{
+    text-align: center;
+    font-size: 10px;
+    color: {T['text3']} !important;
+    font-family: 'Inter', sans-serif;
+    padding: 2.5rem 0 1rem;
+    letter-spacing: 0.4px;
 }}
 
-.stats-label {{
-    color: {T['text2']};
-    font-size: 0.9rem;
+/* ── Responsive ── */
+@media (max-width: 900px) {{
+    .hero-title {{ font-size: 2.2rem !important; }}
+    .agent-grid {{ grid-template-columns: repeat(2, 1fr) !important; }}
+    .report-wrap {{ padding: 1.5rem 1.5rem !important; }}
+    .block-container {{ padding: 0 1rem 3rem !important; }}
 }}
-
-.stats-value {{
-    color: {T['text']};
-    font-weight: 600;
-}}
-
-@media (max-width: 768px) {{
-    h1 {{ font-size: 2.5rem; }}
-    .agent-grid {{ grid-template-columns: 1fr; }}
-    .main .block-container {{ padding: 1rem !important; }}
+@media (max-width: 600px) {{
+    .hero-title {{ font-size: 1.8rem !important; }}
+    .agent-grid {{ grid-template-columns: 1fr !important; }}
+    .pill-row {{ display: none !important; }}
+    .report-wrap {{ padding: 1.2rem 1rem !important; }}
 }}
 </style>
 """, unsafe_allow_html=True)
 
-# ── Sidebar ───────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown(f"<div class='sidebar-title'>Navigation</div>", unsafe_allow_html=True)
-    
-    nav_options = ["🔍 New Research", "📚 Library", "📊 Analytics", "⚙️ Settings"]
-    for opt in nav_options:
-        if st.button(opt, key=f"nav_{opt}", use_container_width=True):
-            st.session_state.nav = opt
-    
-    st.markdown(f"<div class='sidebar-title' style='margin-top: 2rem;'>Today's Stats</div>", unsafe_allow_html=True)
-    
-    stats = [
-        ("Research runs", "12"),
-        ("Total tokens", "142K"),
-        ("Avg. time", "3.2m"),
-        ("Success rate", "98%"),
+
+# ── Helper: render agents ─────────────────────────────────────────────────────
+def render_agents(statuses: dict) -> str:
+    agents = [
+        ("01", "Planner",    "Creates research questions and search queries"),
+        ("02", "Researcher", "Searches web and extracts key insights"),
+        ("03", "Writer",     "Drafts report in your chosen tone and style"),
+        ("04", "Reviewer",   "Scores quality and flags improvements"),
     ]
-    
-    for label, value in stats:
-        st.markdown(f"""
-        <div class='stats-item'>
-            <span class='stats-label'>{label}</span>
-            <span class='stats-value'>{value}</span>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown(f"<div class='sidebar-title' style='margin-top: 2rem;'>Recent Reports</div>", unsafe_allow_html=True)
-    
-    if os.path.exists("outputs"):
-        reports = sorted([f for f in os.listdir("outputs") if f.endswith('.md')], 
-                        key=lambda x: os.path.getmtime(os.path.join("outputs", x)), 
-                        reverse=True)[:5]
-        
-        for report in reports:
-            display_name = report.replace('_', ' ').replace('.md', '')
-            if len(display_name) > 25:
-                display_name = display_name[:25] + "..."
-            
-            mod_time = datetime.fromtimestamp(os.path.getmtime(os.path.join("outputs", report)))
-            time_str = mod_time.strftime("%H:%M")
-            
-            st.markdown(f"""
-            <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; 
-                        border-radius: 8px; margin-bottom: 0.25rem; cursor: pointer;
-                        transition: background 0.2s;" 
-                 onmouseover="this.style.background='{T['surface2']}'" 
-                 onmouseout="this.style.background='transparent'">
-                <span style="color: {T['accent']};">📄</span>
-                <div style="flex: 1;">
-                    <div style="color: {T['text']}; font-size: 0.9rem;">{display_name}</div>
-                    <div style="color: {T['text3']}; font-size: 0.7rem;">{time_str}</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    st.markdown(f"<div class='sidebar-title' style='margin-top: 2rem;'>Appearance</div>", unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
+    badges = {
+        "waiting": "<span class='a-badge b-wait'>· Waiting</span>",
+        "running": "<span class='a-badge b-run'><span class='pulse'></span> Running</span>",
+        "done":    "<span class='a-badge b-done'>✓ Complete</span>",
+    }
+    html = "<div class='agent-grid'>"
+    for num, name, desc in agents:
+        s = statuses.get(name, "waiting")
+        html += (
+            f"<div class='agent-card {s}'>"
+            f"<span class='a-num'>{num}</span>"
+            f"<span class='a-name'>{name}</span>"
+            f"<span class='a-desc'>{desc}</span>"
+            f"{badges[s]}"
+            f"</div>"
+        )
+    html += "</div>"
+    return html
+
+
+# ── Helper: collapsible (no st.expander = no _arrow_right bug) ────────────────
+def collapsible(title: str, content_md: str, key: str):
+    tk = f"open_{key}"
+    if tk not in st.session_state:
+        st.session_state[tk] = False
+
+    col1, col2 = st.columns([7, 1])
     with col1:
-        if st.button("🌙 Dark", use_container_width=True, 
-                    type="primary" if st.session_state.theme == "dark" else "secondary"):
-            st.session_state.theme = "dark"
-            st.rerun()
+        st.markdown(
+            f"<div class='panel-hdr'>"
+            f"<span class='panel-hdr-title'>{title}</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
     with col2:
-        if st.button("☀️ Light", use_container_width=True,
-                    type="primary" if st.session_state.theme == "light" else "secondary"):
-            st.session_state.theme = "light"
+        if st.button(
+            "Hide" if st.session_state[tk] else "Show",
+            key=f"togbtn_{key}",
+            type="secondary"
+        ):
+            st.session_state[tk] = not st.session_state[tk]
+
+    if st.session_state[tk]:
+        st.markdown(
+            f"<div style='"
+            f"background:{T['surface2']};"
+            f"border:1px solid {T['border']};"
+            f"border-radius:0 0 10px 10px;"
+            f"padding:14px 16px;"
+            f"margin-bottom:8px'>",
+            unsafe_allow_html=True
+        )
+        st.markdown(content_md)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown(
+        "<div class='wordmark'>Cortex"
+        "<span class='wordmark-dot'>◈</span></div>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<hr class='sb-div'>", unsafe_allow_html=True)
+
+    # Writing tone
+    st.markdown("<span class='sb-label'>Writing Tone</span>", unsafe_allow_html=True)
+    tone_map = {
+        "Academic":     "Formal, cited, peer-review quality",
+        "Technical":    "Domain-specific, expert-level precision",
+        "Journalistic": "Clear, punchy, inverted pyramid style",
+        "Executive":    "Concise, strategic, business-focused",
+        "Casual":       "Conversational, accessible, engaging",
+    }
+    sel_tone = st.selectbox(
+        "tone_sel",
+        list(tone_map.keys()),
+        index=list(tone_map.keys()).index(st.session_state.tone),
+        label_visibility="collapsed"
+    )
+    st.session_state.tone = sel_tone
+    st.markdown(f"<span class='cfg-desc'>{tone_map[sel_tone]}</span>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # Report style
+    st.markdown("<span class='sb-label'>Report Style</span>", unsafe_allow_html=True)
+    style_map = {
+        "Quick Overview": "600–800 words · essentials only",
+        "Balanced":       "1200–1600 words · breadth and depth",
+        "Detailed":       "2000–2500 words · thorough analysis",
+        "Deep Research":  "3000+ words · exhaustive and cited",
+    }
+    sel_style = st.selectbox(
+        "style_sel",
+        list(style_map.keys()),
+        index=list(style_map.keys()).index(st.session_state.style),
+        label_visibility="collapsed"
+    )
+    st.session_state.style = sel_style
+    st.markdown(f"<span class='cfg-desc'>{style_map[sel_style]}</span>", unsafe_allow_html=True)
+
+    st.markdown("<hr class='sb-div'>", unsafe_allow_html=True)
+
+    # Pipeline
+    st.markdown("<span class='sb-label'>Pipeline</span>", unsafe_allow_html=True)
+    for num, name, desc in [
+        ("01", "Planner",    "Research strategy"),
+        ("02", "Researcher", "Web findings"),
+        ("03", "Writer",     "Report draft"),
+        ("04", "Reviewer",   "Quality check"),
+    ]:
+        st.markdown(
+            f"<div class='pipe-step'>"
+            f"<span class='pipe-num'>{num}</span>"
+            f"<div><div class='pipe-name'>{name}</div>"
+            f"<div class='pipe-desc'>{desc}</div></div>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("<hr class='sb-div'>", unsafe_allow_html=True)
+
+    # Recent reports
+    st.markdown("<span class='sb-label'>Recent Reports</span>", unsafe_allow_html=True)
+    if os.path.exists("outputs"):
+        rfiles = sorted(
+            [f for f in os.listdir("outputs") if f.endswith(".md")],
+            key=lambda x: os.path.getmtime(os.path.join("outputs", x)),
+            reverse=True
+        )[:6]
+        if rfiles:
+            for rf in rfiles:
+                lbl = rf.replace("_", " ").replace(".md", "")
+                lbl = (lbl[:22] + "…") if len(lbl) > 22 else lbl
+                if st.button(f"◈  {lbl}", key=f"rep_{rf}", use_container_width=True):
+                    st.session_state.selected_report = rf
+                    st.rerun()
+        else:
+            st.markdown(
+                f"<span class='cfg-desc'>No reports yet</span>",
+                unsafe_allow_html=True
+            )
+
+
+# ── Report viewer ─────────────────────────────────────────────────────────────
+if st.session_state.selected_report:
+    rpath = os.path.join("outputs", st.session_state.selected_report)
+    if os.path.exists(rpath):
+        with open(rpath, "r", encoding="utf-8") as f:
+            rcontent = f.read()
+
+        if st.button("← Back", type="secondary"):
+            st.session_state.selected_report = None
             st.rerun()
 
-# ── Main Content ──────────────────────────────────────────────────────────
-st.markdown("""
-<div class='hero-section'>
-    <div style="display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 1.5rem;">
-        <span class='badge badge-accent'>✨ Multi-Agent System</span>
-        <span class='badge'>LLaMA 3.3 70B</span>
-        <span class='badge'>Real-time Web</span>
-    </div>
-    <h1>Intelligent Research,<br>Powered by Collaborative AI</h1>
-    <p style="color: {text2}; font-size: 1.2rem; max-width: 600px; margin: 1.5rem auto;">
-        Four specialized AI agents work in concert to plan, research, write, and review 
-        comprehensive reports on any topic.
-    </p>
-    <div style="display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin: 2rem 0;">
-        <span class='feature-pill'>🎯 Strategic Planning</span>
-        <span class='feature-pill'>🔍 Deep Web Research</span>
-        <span class='feature-pill'>✍️ Professional Writing</span>
-        <span class='feature-pill'>✅ Quality Assurance</span>
-    </div>
-</div>
-""".format(**T), unsafe_allow_html=True)
+        st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='report-wrap'>", unsafe_allow_html=True)
+        st.markdown(rcontent)
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+        st.download_button(
+            "Download report (.md)",
+            data=rcontent,
+            file_name=st.session_state.selected_report,
+            mime="text/markdown",
+            use_container_width=True
+        )
+    st.stop()
 
-# Research Input Section
-st.markdown("""
-<div style="display: flex; flex-direction: column; align-items: center; margin: 2rem 0;">
-    <div style="width: 100%; max-width: 600px;">
-""", unsafe_allow_html=True)
 
-topic = st.text_input(
-    "Research Topic",
-    placeholder="e.g., Quantum computing breakthroughs 2024, or Sustainable urban planning trends...",
-    label_visibility="collapsed"
+# ── Hero ──────────────────────────────────────────────────────────────────────
+st.markdown(
+    "<div class='hero-wrap'>"
+    "<div class='hero-tag'>◈ Multi-agent research system</div>"
+    "<h1 class='hero-title'>Research, written by<br><em>a team of agents</em></h1>"
+    "<p class='hero-sub'>Enter any topic and four specialized AI agents plan, "
+    "search the web, write, and review a comprehensive report — automatically.</p>"
+    "<div class='pill-row'>"
+    "<span class='pill'>LLaMA 3.3 70B</span>"
+    "<span class='pill'>Real-time web search</span>"
+    "<span class='pill'>5 writing tones</span>"
+    "<span class='pill'>4 report styles</span>"
+    "<span class='pill'>Quality reviewed</span>"
+    "</div>"
+    "</div>",
+    unsafe_allow_html=True
 )
 
-with st.expander("⚙️ Advanced Configuration", expanded=False):
-    col1, col2 = st.columns(2)
-    with col1:
-        depth = st.select_slider(
-            "Research Depth",
-            options=["Quick", "Balanced", "Deep", "Comprehensive"],
-            value="Balanced"
-        )
-        st.caption("Deeper research takes more time but yields more comprehensive results.")
-    
-    with col2:
-        focus = st.multiselect(
-            "Focus Areas",
-            ["Technical", "Business", "Academic", "News", "Expert Opinions"],
-            default=["Technical", "Academic"]
-        )
-    
-    col3, col4 = st.columns(2)
-    with col3:
-        include_images = st.checkbox("Include images", value=False)
-    with col4:
-        include_stats = st.checkbox("Include statistics", value=True)
 
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    start_research = st.button(
-        "🚀 Begin Research",
-        type="primary",
-        use_container_width=True,
-        disabled=not topic.strip()
+# ── Input ─────────────────────────────────────────────────────────────────────
+_, cc, _ = st.columns([0.3, 3, 0.3])
+with cc:
+    topic = st.text_input(
+        "t",
+        placeholder="What would you like to research today?",
+        label_visibility="collapsed"
     )
-    
-    if topic.strip():
-        st.caption(f"Researching: '{topic}' • {depth} depth • {len(focus)} focus areas")
+    st.markdown(
+        f"<div class='cfg-row'>"
+        f"<span class='cfg-tag'>{st.session_state.tone}</span>"
+        f"<span class='cfg-tag'>{st.session_state.style}</span>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+    _, cb, _ = st.columns([1, 2, 1])
+    with cb:
+        start = st.button("Begin research", type="primary", use_container_width=True)
 
-st.markdown("</div></div>", unsafe_allow_html=True)
+st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
+st.divider()
 
-# ── Agent Display Function (FIXED) ────────────────────────────────────────
-def display_agents(status_dict):
-    agents_html = "<div class='agent-grid'>"
-    
-    agents_info = [
-        ("01", "Planner", "Strategic Research Design", "Creates research questions and search strategies"),
-        ("02", "Researcher", "Information Discovery", "Searches web and extracts key findings"),
-        ("03", "Writer", "Content Synthesis", "Crafts comprehensive reports"),
-        ("04", "Reviewer", "Quality Assurance", "Validates facts and improves quality")
-    ]
-    
-    for num, name, role, desc in agents_info:
-        status = status_dict[name]["status"]
-        status_class = status
-        status_text = "Waiting" if status == "waiting" else ("Running" if status == "running" else "Complete")
-        
-        agents_html += f"""
-        <div class='agent-card {status_class}'>
-            <div class='agent-number'>{num}</div>
-            <div class='agent-name'>{name}</div>
-            <div class='agent-role'>{role}</div>
-            <div style='font-size: 0.8rem; color: {T["text3"]}; margin-bottom: 1rem;'>{desc}</div>
-            <div class='agent-status'>
-                <span class='status-dot {status_class}'></span>
-                <span style='color: {T["text2"]};'>{status_text}</span>
-            </div>
-        </div>
-        """
-    
-    agents_html += "</div>"
-    return agents_html
 
-# ── Research Execution ─────────────────────────────────────────────────────
-if start_research and topic.strip():
-    st.session_state.current_topic = topic
-    st.session_state.research_start = datetime.now()
-    
-    agent_status = {
-        "Planner": {"status": "waiting", "start": None, "end": None},
-        "Researcher": {"status": "waiting", "start": None, "end": None},
-        "Writer": {"status": "waiting", "start": None, "end": None},
-        "Reviewer": {"status": "waiting", "start": None, "end": None}
-    }
-    
-    agent_placeholder = st.empty()
-    progress_placeholder = st.empty()
-    status_placeholder = st.empty()
-    metrics_placeholder = st.empty()
-    
-    try:
-        from src.agents import PlannerAgent, ResearcherAgent, WriterAgent, ReviewerAgent
-        from src.tools import search_web, format_search_results
-        from src.main import extract_search_queries, save_report
-        
-        # Phase 1: Planning
-        agent_status["Planner"]["status"] = "running"
-        agent_status["Planner"]["start"] = datetime.now()
-        agent_placeholder.markdown(display_agents(agent_status), unsafe_allow_html=True)
-        
-        with status_placeholder.container():
-            st.markdown(f"""
-            <div style="display: flex; align-items: center; gap: 1rem; margin: 1rem 0;">
-                <div class="typing-indicator">
-                    <span></span><span></span><span></span>
-                </div>
-                <span style="color: {T['text2']};">Planner is designing research strategy...</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        progress_bar = progress_placeholder.progress(0, text="Initializing research...")
-        
-        for i in range(25):
-            time.sleep(0.1)
-            progress_bar.progress(i + 1, text=f"Planning: {i*4}% complete")
-        
-        plan = PlannerAgent().run(topic)
-        
-        agent_status["Planner"]["status"] = "done"
-        agent_status["Planner"]["end"] = datetime.now()
-        agent_placeholder.markdown(display_agents(agent_status), unsafe_allow_html=True)
-        
-        with st.expander("📋 Research Plan", expanded=False):
-            col1, col2 = st.columns([3, 1])
-            with col1:
+# ── Research pipeline ─────────────────────────────────────────────────────────
+if start:
+    if not topic.strip():
+        st.warning("Please enter a topic first.")
+    else:
+        tone  = st.session_state.tone
+        style = st.session_state.style
+
+        statuses = {k: "waiting" for k in ["Planner", "Researcher", "Writer", "Reviewer"]}
+        agent_ph  = st.empty()
+        prog_ph   = st.empty()
+        status_ph = st.empty()
+
+        agent_ph.markdown(render_agents(statuses), unsafe_allow_html=True)
+        bar = prog_ph.progress(0)
+
+        try:
+            from src.agents import PlannerAgent, ResearcherAgent, WriterAgent, ReviewerAgent
+            from src.tools import search_web, format_search_results
+            from src.main import extract_search_queries, save_report
+            t0 = datetime.now()
+
+            # ── 1. Planner ────────────────────────────────────────────────────
+            statuses["Planner"] = "running"
+            agent_ph.markdown(render_agents(statuses), unsafe_allow_html=True)
+            status_ph.markdown(
+                "<div class='status-bar'>"
+                "<span class='pulse'></span>"
+                " Planner — designing research strategy"
+                "</div>",
+                unsafe_allow_html=True
+            )
+            bar.progress(5)
+
+            plan = PlannerAgent().run(topic)
+
+            statuses["Planner"] = "done"
+            agent_ph.markdown(render_agents(statuses), unsafe_allow_html=True)
+            bar.progress(22)
+            collapsible("Research plan", plan, "plan")
+
+            # ── 2. Researcher ─────────────────────────────────────────────────
+            statuses["Researcher"] = "running"
+            agent_ph.markdown(render_agents(statuses), unsafe_allow_html=True)
+
+            queries     = extract_search_queries(plan, topic)
+            all_results = ""
+            query_tags  = "".join(f"<span class='sq'>{q}</span>" for q in queries)
+
+            for i, q in enumerate(queries):
+                bar.progress(22 + i * 6)
+                status_ph.markdown(
+                    f"<div class='status-bar'>"
+                    f"<span class='pulse'></span> Searching — "
+                    f"<span class='sq'>{q}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+                raw          = search_web(q, max_results=5)
+                all_results += f"\n\n--- Results for: {q} ---\n"
+                all_results += format_search_results(raw)
+
+            findings = ResearcherAgent().run(topic, plan, all_results)
+
+            statuses["Researcher"] = "done"
+            agent_ph.markdown(render_agents(statuses), unsafe_allow_html=True)
+            bar.progress(55)
+
+            findings_display = f"\n\n**Queries used:**\n\n{query_tags}\n\n---\n\n{findings}"
+            collapsible("Research findings", findings_display, "findings")
+
+            # ── 3. Writer ─────────────────────────────────────────────────────
+            statuses["Writer"] = "running"
+            agent_ph.markdown(render_agents(statuses), unsafe_allow_html=True)
+            status_ph.markdown(
+                f"<div class='status-bar'>"
+                f"<span class='pulse'></span>"
+                f" Writer — drafting in <b>{tone}</b> tone · <b>{style}</b> style"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+            bar.progress(60)
+
+            report = WriterAgent(tone=tone, style=style).run(topic, plan, findings)
+
+            statuses["Writer"] = "done"
+            agent_ph.markdown(render_agents(statuses), unsafe_allow_html=True)
+            bar.progress(82)
+
+            # ── 4. Reviewer ───────────────────────────────────────────────────
+            statuses["Reviewer"] = "running"
+            agent_ph.markdown(render_agents(statuses), unsafe_allow_html=True)
+            status_ph.markdown(
+                "<div class='status-bar'>"
+                "<span class='pulse'></span>"
+                " Reviewer — checking quality"
+                "</div>",
+                unsafe_allow_html=True
+            )
+            bar.progress(86)
+
+            review = ReviewerAgent().run(topic, report)
+
+            statuses["Reviewer"] = "done"
+            agent_ph.markdown(render_agents(statuses), unsafe_allow_html=True)
+            bar.progress(100)
+            status_ph.empty()
+
+            # ── Save ──────────────────────────────────────────────────────────
+            elapsed   = (datetime.now() - t0).total_seconds()
+            mins, sec = int(elapsed // 60), int(elapsed % 60)
+
+            save_report({
+                "topic":     topic,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "plan":      plan,
+                "findings":  findings,
+                "report":    report,
+                "review":    review,
+                "status":    "completed",
+            })
+
+            st.divider()
+
+            # ── Metrics ───────────────────────────────────────────────────────
+            wc   = len(report.split())
+            srcs = report.count("http")
+            sm   = re.search(r'(\d+(?:\.\d+)?)\s*/\s*10', review)
+            score = (sm.group(1) + "/10") if sm else "—"
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Time",    f"{mins}m {sec}s")
+            m2.metric("Words",   f"{wc:,}")
+            m3.metric("Sources", srcs)
+            m4.metric("Quality", score)
+
+            st.divider()
+            st.markdown("<span class='eyebrow'>Output</span>", unsafe_allow_html=True)
+
+            tab1, tab2, tab3, tab4 = st.tabs(
+                ["Report", "Findings", "Plan", "Review"]
+            )
+
+            with tab1:
+                st.markdown("<div class='report-wrap'>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='report-meta'>"
+                    f"<span class='rmeta-hi'>{tone}</span>"
+                    f"<span class='rmeta-hi'>{style}</span>"
+                    f"<span class='rmeta-plain'>{wc:,} words</span>"
+                    f"<span class='rmeta-plain'>{srcs} sources</span>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+                st.markdown(report)
+                st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+                d1, d2 = st.columns(2)
+                with d1:
+                    st.download_button(
+                        "Download (.md)", data=report,
+                        file_name=f"{topic.replace(' ', '_')}_report.md",
+                        mime="text/markdown", use_container_width=True
+                    )
+                with d2:
+                    st.download_button(
+                        "Download (.txt)", data=report,
+                        file_name=f"{topic.replace(' ', '_')}_report.txt",
+                        mime="text/plain", use_container_width=True
+                    )
+
+            with tab2:
+                st.markdown(findings)
+            with tab3:
                 st.markdown(plan)
-            with col2:
-                st.metric("Research Questions", len(plan.split('?')))
-                st.metric("Target Sources", "15-20")
-        
-        # Phase 2: Research
-        agent_status["Researcher"]["status"] = "running"
-        agent_status["Researcher"]["start"] = datetime.now()
-        agent_placeholder.markdown(display_agents(agent_status), unsafe_allow_html=True)
-        
-        status_placeholder.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 1rem; margin: 1rem 0;">
-            <div class="typing-indicator">
-                <span></span><span></span><span></span>
-            </div>
-            <span style="color: {T['text2']};">Researcher is gathering information from the web...</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        queries = extract_search_queries(plan, topic)
-        all_results = ""
-        
-        for idx, q in enumerate(queries):
-            progress = 25 + (idx + 1) * 8
-            progress_bar.progress(min(progress, 58), text=f"Searching: {q[:50]}...")
-            
-            status_placeholder.markdown(f"""
-            <div style="margin: 1rem 0;">
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                    <span style="color: {T['accent']};">🔍</span>
-                    <span style="color: {T['text2']};">Search query {idx + 1}/{len(queries)}:</span>
-                    <span style="color: {T['text']};">{q}</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            raw = search_web(q, max_results=5)
-            all_results += f"\n\n## Search: {q}\n"
-            all_results += format_search_results(raw)
-        
-        findings = ResearcherAgent().run(topic, plan, all_results)
-        
-        agent_status["Researcher"]["status"] = "done"
-        agent_status["Researcher"]["end"] = datetime.now()
-        agent_placeholder.markdown(display_agents(agent_status), unsafe_allow_html=True)
-        
-        with st.expander("🔍 Research Findings", expanded=False):
-            st.markdown(findings)
-        
-        # Phase 3: Writing
-        agent_status["Writer"]["status"] = "running"
-        agent_status["Writer"]["start"] = datetime.now()
-        agent_placeholder.markdown(display_agents(agent_status), unsafe_allow_html=True)
-        
-        status_placeholder.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 1rem; margin: 1rem 0;">
-            <div class="typing-indicator">
-                <span></span><span></span><span></span>
-            </div>
-            <span style="color: {T['text2']};">Writer is synthesizing findings into a comprehensive report...</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        for i in range(58, 84):
-            time.sleep(0.1)
-            progress_bar.progress(i, text=f"Writing: {int((i-58)/0.26)}% complete")
-        
-        report = WriterAgent().run(topic, plan, findings)
-        
-        agent_status["Writer"]["status"] = "done"
-        agent_status["Writer"]["end"] = datetime.now()
-        agent_placeholder.markdown(display_agents(agent_status), unsafe_allow_html=True)
-        
-        # Phase 4: Review
-        agent_status["Reviewer"]["status"] = "running"
-        agent_status["Reviewer"]["start"] = datetime.now()
-        agent_placeholder.markdown(display_agents(agent_status), unsafe_allow_html=True)
-        
-        status_placeholder.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 1rem; margin: 1rem 0;">
-            <div class="typing-indicator">
-                <span></span><span></span><span></span>
-            </div>
-            <span style="color: {T['text2']};">Reviewer is ensuring quality and accuracy...</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        for i in range(84, 100):
-            time.sleep(0.1)
-            progress_bar.progress(i, text=f"Reviewing: {int((i-84)*6.25)}% complete")
-        
-        review = ReviewerAgent().run(topic, report)
-        
-        agent_status["Reviewer"]["status"] = "done"
-        agent_status["Reviewer"]["end"] = datetime.now()
-        agent_placeholder.markdown(display_agents(agent_status), unsafe_allow_html=True)
-        
-        progress_bar.progress(100, text="Research complete!")
-        status_placeholder.empty()
-        
-        research_time = (datetime.now() - st.session_state.research_start).total_seconds()
-        minutes = int(research_time // 60)
-        seconds = int(research_time % 60)
-        
-        word_count = len(report.split())
-        source_count = report.count("http") + report.count("www")
-        
-        import re
-        score_match = re.search(r'(\d+)[/\s]*10', review)
-        quality_score = score_match.group(1) if score_match else "9"
-        
-        with metrics_placeholder.container():
-            st.markdown("<hr>", unsafe_allow_html=True)
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Research Time", f"{minutes}m {seconds}s", "Fast")
-            col2.metric("Word Count", f"{word_count:,}", "+12% vs avg")
-            col3.metric("Sources Found", source_count, "Validated")
-            col4.metric("Quality Score", f"{quality_score}/10", "Excellent")
-            st.markdown("<hr>", unsafe_allow_html=True)
-        
-        results = {
-            "topic": topic,
-            "timestamp": datetime.now().isoformat(),
-            "plan": plan,
-            "findings": findings,
-            "report": report,
-            "review": review,
-            "metrics": {
-                "duration": research_time,
-                "word_count": word_count,
-                "sources": source_count,
-                "queries": len(queries)
-            }
-        }
-        
-        filename = save_report(results)
-        
-        st.markdown("## 📊 Research Results")
-        
-        tab1, tab2, tab3, tab4 = st.tabs(["📄 Final Report", "🔍 Findings", "📋 Plan", "✅ Review"])
-        
-        with tab1:
-            st.markdown(f"""
-            <div class='report-container'>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                    <h2 style="margin: 0;">{topic}</h2>
-                    <span class='badge badge-accent'>v1.0</span>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown(report)
-            
-            st.markdown("""
-            </div>
-            """, unsafe_allow_html=True)
-            
-            col1, col2, col3 = st.columns([1, 1, 1])
-            with col1:
-                st.download_button(
-                    "📥 Download Markdown",
-                    data=report,
-                    file_name=f"{topic.replace(' ', '_')}_report.md",
-                    mime="text/markdown",
-                    use_container_width=True
-                )
-            with col2:
-                st.download_button(
-                    "📄 Download Text",
-                    data=report,
-                    file_name=f"{topic.replace(' ', '_')}_report.txt",
-                    mime="text/plain",
-                    use_container_width=True
-                )
-        
-        with tab2:
-            st.markdown(findings)
-        
-        with tab3:
-            st.markdown(plan)
-        
-        with tab4:
-            st.markdown(review)
-        
-        st.session_state.research_history.append({
-            "topic": topic,
-            "timestamp": datetime.now(),
-            "filename": filename
-        })
-        
-        st.markdown("---")
-        st.markdown("### 💡 Suggested Next Steps")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(f"""
-            <div class='glass-card' style="text-align: center;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🔍</div>
-                <div style="font-weight: 600; margin-bottom: 0.5rem;">Deep Dive</div>
-                <div style="color: {T['text2']}; font-size: 0.9rem;">Explore specific aspects in detail</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-            <div class='glass-card' style="text-align: center;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
-                <div style="font-weight: 600; margin-bottom: 0.5rem;">Generate Visuals</div>
-                <div style="color: {T['text2']}; font-size: 0.9rem;">Create charts and diagrams</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-            <div class='glass-card' style="text-align: center;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🔄</div>
-                <div style="font-weight: 600; margin-bottom: 0.5rem;">Compare Topics</div>
-                <div style="color: {T['text2']}; font-size: 0.9rem;">Research related subjects</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-    except Exception as e:
-        st.error(f"⚠️ Research encountered an error: {str(e)}")
-        st.exception(e)
-        
-        if st.button("🔄 Try Again", type="primary"):
-            st.rerun()
+            with tab4:
+                st.markdown(review)
 
-# ── Footer ────────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown(f"""
-<div style="text-align: center; color: {T['text3']}; font-size: 0.8rem; padding: 2rem 0;">
-    <span>Powered by LLaMA 3.3 70B · Multi-Agent Architecture · Real-time Web Search</span>
-</div>
-""", unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Something went wrong: {str(e)}")
+            st.exception(e)
 
-st.markdown("""
-<script>
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && e.ctrlKey) {
-        const btn = document.querySelector('button[kind="primary"]');
-        if (btn) btn.click();
-    }
-});
-</script>
-""", unsafe_allow_html=True)
+
+# ── Footer ────────────────────────────────────────────────────────────────────
+st.markdown("<div style='height:3rem'></div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='footer'>"
+    "Cortex ◈ · LLaMA 3.3 70B · DuckDuckGo Search · Built with Streamlit"
+    "</div>",
+    unsafe_allow_html=True
+)

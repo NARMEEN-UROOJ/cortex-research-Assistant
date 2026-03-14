@@ -124,8 +124,13 @@ You MUST output your findings in this EXACT format:
 
 Be rigorous, cite sources, and prioritize accuracy over quantity."""
 
-    def run(self, topic: str, research_plan: str, search_results: str) -> str:
+    def run(self, topic: str, research_plan: str, search_results: str, doc_context: str = "") -> str:
         print(f"\n[Researcher] Analyzing search results for: {topic}")
+        
+        doc_section = ""
+        if doc_context and doc_context.strip():
+            doc_section = f"\nRelevant content from uploaded documents:\n{doc_context}\n"
+
         user_message = f"""Topic: {topic}
 
 Research Plan:
@@ -133,66 +138,86 @@ Research Plan:
 
 Web Search Results:
 {search_results}
+{doc_section}
+Based on the research plan and all sources above, provide comprehensive research findings.
+If document content is provided, prioritize and clearly reference it alongside web findings."""
 
-Based on the research plan and search results above, provide comprehensive research findings."""
         result = call_llm(self.system_prompt, user_message, temperature=0.5)
         print("[Researcher] Done.")
         return result
 
 
 class WriterAgent:
-    def __init__(self):
-        self.system_prompt = """You are an award-winning Technical Writer and Analyst who has written 
-for Harvard Business Review, MIT Technology Review, and Nature.
+    def __init__(self, tone: str = "Academic", style: str = "Balanced"):
+        self.tone = tone
+        self.style = style
 
-You transform research findings into compelling, publication-quality reports.
+        tone_guides = {
+            "Academic": "Write in a formal academic tone. Use precise terminology, cite evidence thoroughly, maintain objectivity, and structure arguments logically as you would in a peer-reviewed journal.",
+            "Technical": "Write in a technical tone targeting professionals and engineers. Use domain-specific terminology, include technical details, specifications, and focus on practical implementation.",
+            "Journalistic": "Write in a clear journalistic style. Lead with the most important findings, use the inverted pyramid structure, keep paragraphs short and punchy, and make complex topics accessible.",
+            "Executive": "Write in a concise executive style. Lead with key takeaways, use bullet points for critical insights, focus on business implications, ROI, and strategic recommendations.",
+            "Casual": "Write in a conversational, engaging tone. Explain complex topics simply, use analogies and real-world examples, and make the content approachable for a general audience.",
+        }
+
+        style_guides = {
+            "Quick Overview": "Keep the report concise — 600 to 800 words total. Cover only the most essential points. Use short sections with clear headers. No deep dives.",
+            "Balanced": "Write a well-rounded report of 1200 to 1600 words. Cover key areas with moderate depth. Balance breadth and detail equally.",
+            "Detailed": "Write a comprehensive report of 2000 to 2500 words. Cover all aspects thoroughly with examples, data points, and in-depth analysis for each section.",
+            "Deep Research": "Write an exhaustive report of 3000+ words. Include a detailed literature-style analysis, multiple subsections per topic, contrasting viewpoints, statistical evidence, case studies, and a thorough future outlook.",
+        }
+
+        self.system_prompt = f"""You are an award-winning writer who has contributed to Harvard Business Review, MIT Technology Review, Nature, and The Economist.
+
+Tone instruction: {tone_guides.get(tone, tone_guides['Academic'])}
+
+Length and depth instruction: {style_guides.get(style, style_guides['Balanced'])}
 
 You MUST output the report in this EXACT format:
 
 # [TOPIC]: A Comprehensive Analysis
 
 ## Executive Summary
-[3-4 paragraphs. Hook the reader, state the most important findings, and explain why this matters now.]
+[Follow tone and style instructions strictly]
 
 ## Introduction
-[2-3 paragraphs providing context, background, and why this topic is important today.]
+[Follow tone and style instructions strictly]
 
-## [Section 1 Title - based on research]
-[3-4 paragraphs with detailed analysis, examples, and insights]
+## [Section 1 Title]
+[Follow tone and style instructions strictly]
 
-## [Section 2 Title - based on research]
-[3-4 paragraphs with detailed analysis, examples, and insights]
+## [Section 2 Title]
+[Follow tone and style instructions strictly]
 
-## [Section 3 Title - based on research]
-[3-4 paragraphs with detailed analysis, examples, and insights]
+## [Section 3 Title]
+[Follow tone and style instructions strictly]
 
-## [Section 4 Title - based on research]
-[3-4 paragraphs with detailed analysis, examples, and insights]
+## [Section 4 Title]
+[Follow tone and style instructions strictly]
 
 ## Key Statistics & Data
-- **[Stat 1]:** [Context and significance]
-- **[Stat 2]:** [Context and significance]
-- **[Stat 3]:** [Context and significance]
+- **[Stat 1]:** [Context]
+- **[Stat 2]:** [Context]
+- **[Stat 3]:** [Context]
 
 ## Future Outlook
-[2-3 paragraphs on trends, predictions, and what to watch for]
+[Follow tone and style instructions strictly]
 
 ## Conclusion
-[2-3 paragraphs synthesizing everything and leaving the reader with clear takeaways]
+[Follow tone and style instructions strictly]
 
 ## Sources & References
-- [Source 1 with URL]
-- [Source 2 with URL]
-- [Source 3 with URL]
+- [Source with URL]
+- [Source with URL]
 
-Rules:
-- Write in clear, engaging prose — not bullet points in the main sections
-- Every claim must be grounded in the research findings provided
-- Minimum 1500 words total
-- Make it sound like a human expert wrote it, not an AI"""
+Critical rules:
+- Strictly follow the tone: {tone}
+- Strictly follow the length/depth: {style}
+- Every claim must come from the research findings provided
+- Never sound generic or AI-written — write with authority and personality"""
 
     def run(self, topic: str, research_plan: str, research_findings: str) -> str:
-        print(f"\n[Writer] Drafting report for: {topic}")
+        print(f"\n[Writer] Drafting report — Tone: {self.tone} | Style: {self.style}")
         user_message = f"""Topic: {topic}
 
 Research Plan:
@@ -201,7 +226,7 @@ Research Plan:
 Research Findings:
 {research_findings}
 
-Write a comprehensive, publication-quality report based on the above."""
+Write the report now following your tone ({self.tone}) and style ({self.style}) instructions strictly."""
         result = call_llm(self.system_prompt, user_message, temperature=0.8)
         print("[Writer] Done.")
         return result
