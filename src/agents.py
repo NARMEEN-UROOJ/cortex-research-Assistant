@@ -1,15 +1,42 @@
 from groq import Groq
-from dotenv import load_dotenv
 import os
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    load_dotenv()
+except Exception:
+    # python-dotenv is optional (Streamlit Cloud typically uses secrets)
+    pass
 MODEL = "llama-3.3-70b-versatile"
+
+
+def _get_groq_api_key() -> str | None:
+    key = os.getenv("GROQ_API_KEY")
+    if key:
+        return key
+
+    # Streamlit Cloud: secrets are preferred
+    try:
+        import streamlit as st
+
+        return st.secrets.get("GROQ_API_KEY")
+    except Exception:
+        return None
+
+
+def _get_groq_client() -> Groq:
+    api_key = _get_groq_api_key()
+    if not api_key:
+        raise RuntimeError(
+            "Missing GROQ_API_KEY. Set it in your environment or in Streamlit Cloud Secrets."
+        )
+    return Groq(api_key=api_key)
 
 def call_llm(system_prompt: str, user_message: str, temperature: float = 0.7) -> str:
     """Core function that calls Groq API."""
     try:
+        client = _get_groq_client()
         response = client.chat.completions.create(
             model=MODEL,
             messages=[
