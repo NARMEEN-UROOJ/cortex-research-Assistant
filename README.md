@@ -4,9 +4,7 @@ A Streamlit app that runs a 4‑stage research pipeline (Planner → Researcher 
 
 ## Deployed App
 
-- Streamlit: **ADD_YOUR_STREAMLIT_APP_URL_HERE**
-
-(Reply with your deployed URL and I’ll update this line.)
+- Streamlit: https://cortex-research-assistant-9y35zk3ygx4agiaurrcnx5.streamlit.app/
 
 ## Features
 
